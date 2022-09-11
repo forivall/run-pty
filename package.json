@@ -24,10 +24,12 @@
     "xterm"
   ],
   "dependencies": {
+    "debug": "^4.3.4",
     "node-pty": "^1.0.0",
     "tiny-decoders": "^7.0.1"
   },
   "devDependencies": {
+    "@types/debug": "^4.1.7",
     "@typescript-eslint/eslint-plugin": "6.4.0",
     "@typescript-eslint/parser": "6.4.0",
     "eslint": "8.47.0",

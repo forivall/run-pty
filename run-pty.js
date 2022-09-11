@@ -7,6 +7,16 @@ const path = require("path");
 const os = require("os");
 const pty = require("node-pty");
 const Decode = require("tiny-decoders");
+const debug = require("debug")("run-pty");
+
+if (debug.enabled) {
+  const util = require("util");
+  const log = fs.createWriteStream(".run-pty.log");
+  debug.log = (...args) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    log.write(`${util.format(...args)}\n`);
+  };
+}
 
 /**
  * @typedef {
@@ -28,6 +38,7 @@ const SUPPORTS_EMOJI = !IS_WINDOWS || IS_WINDOWS_TERMINAL;
 
 // https://github.com/sindresorhus/ansi-escapes/blob/2b3b59c56ff77a2afdee946bff96f1779d10d775/index.js#L5
 const IS_TERMINAL_APP = process.env.TERM_PROGRAM === "Apple_Terminal";
+const IS_ITERM_APP = process.env.TERM_PROGRAM === "iTerm.app";
 
 const SLOW_KILL = 100; // ms
 
@@ -78,10 +89,14 @@ const DISABLE_APPLICATION_CURSOR_KEYS = "\x1B[?1l"; // https://www.vt100.net/doc
 const ENABLE_MOUSE = "\x1B[?1000;1006h";
 const DISABLE_MOUSE = "\x1B[?1000;1006l";
 const RESET_COLOR = "\x1B[m";
-const CLEAR = "\x1B[2J\x1B[3J\x1B[H";
+const CLEAR_ITERM = "\x1B]1337;ClearScrollback\x07";
+const CLEAR_SCROLLBACK = "\x1B]3J";
+const CLEAR = `\x1B[2J${IS_ITERM_APP ? CLEAR_ITERM : CLEAR_SCROLLBACK}\x1B[H`;
 const CLEAR_LEFT = "\x1B[1K";
 const CLEAR_RIGHT = "\x1B[K";
 const CLEAR_DOWN = "\x1B[J";
+const CLEAR_SCREEN = "\x1Bc";
+debug("clear screen: %j", CLEAR_SCREEN);
 // These save/restore cursor position _and graphic renditions._
 const SAVE_CURSOR = IS_TERMINAL_APP ? "\u001B7" : "\x1B[s";
 const RESTORE_CURSOR = IS_TERMINAL_APP ? "\u001B8" : "\x1B[u";
@@ -1346,7 +1361,13 @@ class Command {
               }
             }
           } else {
-            this.history += part;
+            if (part === CLEAR_SCREEN) {
+              debug("clear screen");
+              this.history = "";
+            } else {
+              debug("add history %j", part.slice(0, 80));
+              this.history += part;
+            }
             // Take one extra character so `NOT_SIMPLE_LOG_ESCAPE` can match the
             // `\n${CURSOR_UP}` pattern.
             const matches = this.history
@@ -1476,6 +1497,10 @@ const runInteractively = (commandDescriptions, autoExit) => {
     if (command.isOnAlternateScreen && !ignoreAlternateScreen) {
       process.stdout.write(data);
       return undefined;
+    }
+
+    if (IS_ITERM_APP && CLEAR_REGEX.test(data)) {
+      process.stdout.write(CLEAR);
     }
 
     /**
